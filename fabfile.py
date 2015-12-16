@@ -27,7 +27,7 @@ def set_hostname():
         run("cat /etc/hostname")
 def install_repo():
 	run("rpm -Uvh http://repos.mesosphere.com/el/7/noarch/RPMS/mesosphere-el-repo-7-1.noarch.rpm")
-def purge_all():
+def purge_all_packages():
 	run("yum -y remove mesos marathon mesosphere-zookeeper")
 def restart_master_service():
         run("systemctl start zookeeper")
@@ -48,6 +48,8 @@ def install_master():
 	run("firewall-cmd --zone=public --permanent --add-port=3888/tcp")	
 	run("firewall-cmd --zone=public --permanent --add-port=8080/tcp")	
         run("firewall-cmd --zone=public --permanent --add-port=53/udp")
+	run("firewall-cmd --zone=public --permanent --add-port=2181")
+	
 	run("echo 2 > /etc/mesos-master/quorum")
         if env.host == "mesos01": 
 		run("echo 1 > /var/lib/zookeeper/myid")
@@ -57,7 +59,8 @@ def install_master():
 		run("echo 3 > /var/lib/zookeeper/myid")
 	run("rm -rf /etc/mesos/zk")
 	append('/etc/mesos/zk', 'zk://mesos01:2181,mesos02:2181,mesos03:2181/mesos', use_sudo=True)
- 	append('/etc/zookeeper/conf/zoo.cfg', '# specify all zookeeper servers', use_sudo=True)
+	run("echo Cluster01 | sudo tee /etc/mesos-master/cluster")
+	append('/etc/zookeeper/conf/zoo.cfg', '# specify all zookeeper servers', use_sudo=True)
         append('/etc/zookeeper/conf/zoo.cfg', 'server.1=mesos01:2888:3888', use_sudo=True)
         append('/etc/zookeeper/conf/zoo.cfg', 'server.2=mesos03:2888:3888', use_sudo=True)
         append('/etc/zookeeper/conf/zoo.cfg', 'server.3=mesos02:2888:3888', use_sudo=True)
@@ -74,13 +77,15 @@ def install_master():
         run("cp /etc/mesos-master/hostname /etc/marathon/conf")
         run("cp /etc/mesos/zk /etc/marathon/conf/master")
         run("cp /etc/marathon/conf/master /etc/marathon/conf/zk")
-        run("sed -i -e 's/mesos/marathon/g' /etc/marathon/conf/zk")
+	append('/etc/sysctl.conf', 'net.ipv6.conf.default.disable_ipv6 = 1', use_sudo=True)
+        append('/etc/sysctl.conf', 'net.ipv6.conf.all.disable_ipv6 = 1', use_sudo=True)
+#       run("sed -e 's/mesos/marathon/g' /etc/marathon/conf/zk")
 	run("systemctl start zookeeper")
         run("service mesos-master restart")
         run("service marathon restart")
         run("systemctl restart firewalld")
 @roles('slave')
-def install_agent():
+def install_slave():
 	run("yum -y install mesos")
 	run("systemctl stop mesos-master.service")
 	run("systemctl disable mesos-master.service")
@@ -88,6 +93,10 @@ def install_agent():
 	run("firewall-cmd --zone=public --permanent --add-port=2181/tcp")	
         run("rm -rf /etc/mesos/zk")
         append('/etc/mesos/zk', 'zk://mesos01:2181,mesos02:2181,mesos03:2181/mesos', use_sudo=True)
+	run("mkdir -p /etc/marathon/conf")
+	run("cp /etc/mesos-master/hostname /etc/marathon/conf")
+	run("cp /etc/mesos/zk /etc/marathon/conf/master")
+	run("cp /etc/marathon/conf/master /etc/marathon/conf/zk")
         run("service mesos-slave restart")
         run("systemctl restart firewalld")
 
